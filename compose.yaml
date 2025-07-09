@@ -1,0 +1,69 @@
+services:
+  gitea:
+    build: gitea
+    environment:
+      - GITEA__security__INSTALL_LOCK=true
+      - GITEA__server__DOMAIN=gitea
+      - GITEA__server__SSH_DOMAIN=gitea
+      - GITEA__server__HTTP_PORT=3000
+      - GITEA__server__ROOT_URL=http://gitea:3000
+    ports:
+      - 3000:3000
+    volumes:
+      - gitea_data:/data
+      - /etc/timezone:/etc/timezone:ro
+      - /etc/localtime:/etc/localtime:ro
+    healthcheck:
+      test: ["CMD", "curl", "--silent", "--fail-with-body", "--max-time", "5", "http://localhost:3000/api/healthz"]
+      timeout: 5s
+      interval: 10s
+      retries: 30
+  storage:
+    build: azurite
+    command:
+      - azurite
+      - --debug=/dev/stderr
+      - --location=/data
+      - --blobHost=0.0.0.0
+      - --queueHost=0.0.0.0
+      - --tableHost=0.0.0.0
+      - --disableTelemetry
+    healthcheck:
+      test: nc 127.0.0.1 10000 -z
+      interval: 1s
+      retries: 30
+  storage_init:
+    image: mcr.microsoft.com/azure-cli:2.75.0
+    command:
+      - /bin/bash
+      - -exc
+      - |
+        az storage container create --name terraform #--debug
+    depends_on:
+      storage:
+        condition: service_healthy
+    environment:
+      AZURE_STORAGE_CONNECTION_STRING: DefaultEndpointsProtocol=http;AccountName=devstoreaccount1;AccountKey=Eby8vdM02xNOcqFlqUwJPLlmEtlCDXJ1OUzFT50uSRZ6IFsuFq2UVErCz4I6tq/K1SZFPTOtr/KBHBeksoGMGw==;BlobEndpoint=http://storage:10000/devstoreaccount1;
+  init:
+    build: init
+    user: "${UID:-1000}:${GID:-1000}"
+    volumes:
+      - .:/host
+    environment:
+      - AZURE_STORAGE_CONNECTION_STRING=DefaultEndpointsProtocol=http;AccountName=devstoreaccount1;AccountKey=Eby8vdM02xNOcqFlqUwJPLlmEtlCDXJ1OUzFT50uSRZ6IFsuFq2UVErCz4I6tq/K1SZFPTOtr/KBHBeksoGMGw==;BlobEndpoint=http://storage:10000/devstoreaccount1;
+      - AZURE_STORAGE_SERVICE_ENDPOINT=http://storage:10000/devstoreaccount1
+      - ARM_ACCESS_KEY=Eby8vdM02xNOcqFlqUwJPLlmEtlCDXJ1OUzFT50uSRZ6IFsuFq2UVErCz4I6tq/K1SZFPTOtr/KBHBeksoGMGw==
+      - GITEA_BASE_URL=http://gitea:3000
+      - GITEA_USERNAME=admin
+      - GITEA_PASSWORD=admin
+      - GITEA_SERVER_URL=http://gitea:3000
+      - GITEA_SERVER_USER=admin
+      - GITEA_SERVER_PASSWORD=admin
+      - GITEA_SCOPES=all
+    depends_on:
+      storage_init:
+        condition: service_completed_successfully
+      gitea:
+        condition: service_healthy
+volumes:
+  gitea_data:

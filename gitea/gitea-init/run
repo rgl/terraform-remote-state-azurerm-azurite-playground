@@ -1,0 +1,20 @@
+#!/bin/bash
+set -euo pipefail
+
+while ! curl --silent --fail-with-body --max-time 5 http://localhost:3000/api/healthz &>/dev/null; do
+  sleep 1
+done
+
+if ! su-exec git gitea admin user list --admin | grep -q 'admin'; then
+  su-exec git gitea admin user create \
+    --username admin \
+    --password "${GITEA_ADMIN_PASSWORD:-admin}" \
+    --email "${GITEA_ADMIN_EMAIL:-admin@example.com}" \
+    --admin
+  echo "admin user created"
+else
+  echo "admin user already exists"
+fi
+
+# TODO is there a way to configure this service as "oneshot"? so it does not require to be resident/running?
+sleep inf
